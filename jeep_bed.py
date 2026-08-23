@@ -109,11 +109,11 @@ engine_button = Button(ENGINE_BUTTON_PIN, bounce_time=0.05)
 radio_button = Button(RADIO_BUTTON_PIN, bounce_time=0.05)
 headlight_button = Button(HEADLIGHT_BUTTON_PIN, bounce_time=0.05)
 
-headlight_led = LED(HEADLIGHT_LED_PIN)
-horn_led = LED(HORN_LED_PIN)
-siren_led = LED(SIREN_LED_PIN)
-engine_led = LED(ENGINE_LED_PIN)
-radio_led = LED(RADIO_LED_PIN)
+headlight_led = LED(HEADLIGHT_LED_PIN, active_high=False)
+horn_led = LED(HORN_LED_PIN, active_high=False)
+siren_led = LED(SIREN_LED_PIN, active_high=False)
+engine_led = LED(ENGINE_LED_PIN, active_high=False)
+radio_led = LED(RADIO_LED_PIN, active_high=False)
 
 strip = neopixel.NeoPixel(
     STRIP_PIXEL_PIN,
