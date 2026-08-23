@@ -3,13 +3,12 @@
 Jeep Bed Interactive Controller
 --------------------------------
 Raspberry Pi 4B script: 4 main buttons + combined headlight toggle +
-WS2812B side LED strip + sound effects out the 3.5mm jack.
+sound effects out the 3.5mm jack.
 
 INSTALL (on the Pi):
     sudo apt-get update
     sudo apt-get install -y git python3-pip python3-pygame
-    sudo pip3 install --break-system-packages gpiozero adafruit-blinka \
-        adafruit-circuitpython-neopixel rpi_ws281x
+    sudo pip3 install --break-system-packages gpiozero
 
 CLONE GIT REPO
     cd ~
@@ -18,7 +17,6 @@ CLONE GIT REPO
 
 FORCE AUDIO OUT THE 3.5MM JACK:
     sudo raspi-config  ->  System Options -> Audio -> Headphones
-    (or: amixer cset numid=3 1)
 
 WIRING SUMMARY:
     - Buttons: one leg to GPIO, other to GND. gpiozero uses the internal
@@ -31,12 +29,6 @@ WIRING SUMMARY:
     - Each main button's built-in white LED: same rule -- GPIO -> MOSFET/
       transistor driver -> LED -> supply. The colored cap doesn't change
       the wiring, it's still a plain white LED underneath.
-    - WS2812B strips (x2, daisy-chained): GPIO18 (hardware PWM) -> level
-      shifter (74AHCT125 recommended) -> DIN of strip A -> DOUT of strip A
-      -> DIN of strip B. Both strips get 5V/GND injected separately from
-      their OWN supply (not relayed through the data chain) -- tie all
-      grounds together. Software treats both as one continuous pixel
-      array; see STRIP_LEFT_COUNT / STRIP_RIGHT_COUNT below.
 
 Run manually to test:
     sudo python3 jeep_bed.py
@@ -50,11 +42,9 @@ import sys
 
 from gpiozero import Button, LED
 import pygame
-import board
-import neopixel
 
 # ---------------------------------------------------------------------------
-# CONFIG -- edit pins and sound filenames to match your build
+# CONFIG
 # ---------------------------------------------------------------------------
 
 HORN_BUTTON_PIN = 17
@@ -80,17 +70,6 @@ RADIO_SOUNDS = [
 HEADLIGHT_BUTTON_PIN = 24   # both physical headlight buttons wired here
 HEADLIGHT_LED_PIN = 25      # drives MOSFET gate for the headlight LEDs
 
-STRIP_PIXEL_PIN = board.D18
-STRIP_LEFT_COUNT = 50          # pixels in the left-side strip
-STRIP_RIGHT_COUNT = 50         # pixels in the right-side strip (daisy-chained after left)
-STRIP_NUM_PIXELS = STRIP_LEFT_COUNT + STRIP_RIGHT_COUNT
-STRIP_BRIGHTNESS = 1.0
-
-RED = (255, 0, 0)
-BLUE = (0, 0, 255)
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-
 # ---------------------------------------------------------------------------
 # SETUP
 # ---------------------------------------------------------------------------
@@ -114,13 +93,6 @@ horn_led = LED(HORN_LED_PIN, active_high=False)
 siren_led = LED(SIREN_LED_PIN, active_high=False)
 engine_led = LED(ENGINE_LED_PIN, active_high=False)
 radio_led = LED(RADIO_LED_PIN, active_high=False)
-
-strip = neopixel.NeoPixel(
-    STRIP_PIXEL_PIN,
-    STRIP_NUM_PIXELS,
-    brightness=STRIP_BRIGHTNESS,
-    auto_write=False,
-)
 
 siren_active = threading.Event()
 
@@ -149,28 +121,12 @@ horn_button.when_released = on_horn_release
 # BUTTON 2: SIREN / EMERGENCY LIGHTS -- toggle on/off, runs in background
 # ---------------------------------------------------------------------------
 
-def siren_loop():
-    while True:
-        if siren_active.is_set():
-            strip.fill(RED)
-            strip.show()
-            time.sleep(0.25)
-            if siren_active.is_set():
-                strip.fill(BLUE)
-                strip.show()
-                time.sleep(0.25)
-        else:
-            time.sleep(0.05)
-
-
 def on_siren_toggle():
     if siren_active.is_set():
         print("[siren] off")
         siren_active.clear()
         siren_sound.stop()
         siren_led.off()
-        strip.fill(BLACK)
-        strip.show()
     else:
         print("[siren] on")
         siren_active.set()
@@ -179,7 +135,6 @@ def on_siren_toggle():
 
 
 siren_button.when_pressed = on_siren_toggle
-threading.Thread(target=siren_loop, daemon=True).start()
 
 # ---------------------------------------------------------------------------
 # BUTTON 3: ENGINE START -- rev sound + one-shot strip chase
@@ -189,14 +144,6 @@ def on_engine_start():
     print("[engine] start")
     engine_led.on()
     engine_sound.play()
-    if not siren_active.is_set():
-        for i in range(STRIP_NUM_PIXELS):
-            strip[i] = WHITE
-            strip.show()
-            time.sleep(0.02)
-        time.sleep(0.3)
-        strip.fill(BLACK)
-        strip.show()
 
 
 def on_engine_release():
@@ -248,8 +195,6 @@ def shutdown(*_args):
     siren_led.off()
     engine_led.off()
     radio_led.off()
-    strip.fill(BLACK)
-    strip.show()
     pygame.mixer.quit()
     sys.exit(0)
 
@@ -268,8 +213,8 @@ signal.pause()
 # After=sound.target
 #
 # [Service]
-# ExecStart=/usr/bin/python3 /home/pi/jeep_bed.py
-# WorkingDirectory=/home/pi
+# ExecStart=/usr/bin/python3 /home/iot/iot-bed/jeep_bed.py
+# WorkingDirectory=/home/iot/iot-bed
 # Restart=always
 # User=root
 #
@@ -277,4 +222,3 @@ signal.pause()
 # WantedBy=multi-user.target
 #
 # Then: sudo systemctl enable jeepbed.service && sudo systemctl start jeepbed.service
-# Note: neopixel typically needs root, hence User=root here (vs pi in v1).
