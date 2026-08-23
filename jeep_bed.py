@@ -7,9 +7,14 @@ WS2812B side LED strip + sound effects out the 3.5mm jack.
 
 INSTALL (on the Pi):
     sudo apt-get update
-    sudo apt-get install -y python3-pip python3-pygame
+    sudo apt-get install -y git python3-pip python3-pygame
     sudo pip3 install --break-system-packages gpiozero adafruit-blinka \
         adafruit-circuitpython-neopixel rpi_ws281x
+
+CLONE GIT REPO
+    cd ~
+    git clone https://github.com/justinmiller24/iot-bed.git
+    cd iot-bed
 
 FORCE AUDIO OUT THE 3.5MM JACK:
     sudo raspi-config  ->  System Options -> Audio -> Headphones
