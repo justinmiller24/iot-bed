@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Jeep Bed Control Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1b1f1a;
+    --panel: #23281f;
+    --panel-edge: #343b2c;
+    --bone: #eae6da;
+    --bone-dim: #a9a693;
+    --amber: #e8a33d;
+    --red: #c1443c;
+    --blue: #3d6fa8;
+    --green: #5c8a4a;
+    --white-btn: #d8d4c6;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 50% 0%, rgba(232,163,61,0.06), transparent 60%);
+    color: var(--bone);
+    font-family: 'JetBrains Mono', monospace;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px 40px;
+  }
+
+  .panel {
+    width: 100%;
+    max-width: 420px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+
+  h1 {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: 1.6rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 0 4px;
+    color: var(--bone);
+  }
+
+  .subtitle {
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+  }
+
+  .section-label {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+    margin: 22px 0 12px;
+    padding-left: 2px;
+  }
+
+  /* Momentary buttons */
+  .press-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+
+  .press-btn {
+    aspect-ratio: 1;
+    border-radius: 50%;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #1b1f1a;
+    cursor: pointer;
+    box-shadow:
+      inset 0 -4px 0 rgba(0,0,0,0.28),
+      0 3px 8px rgba(0,0,0,0.4);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+  }
+
+  .press-btn:active,
+  .press-btn.is-active {
+    transform: translateY(3px);
+    box-shadow:
+      inset 0 -1px 0 rgba(0,0,0,0.28),
+      0 1px 3px rgba(0,0,0,0.4);
+  }
+
+  .press-btn svg { width: 26px; height: 26px; }
+
+  .btn-horn  { background: var(--red); color: #fdf1ef; }
+  .btn-engine { background: var(--green); color: #f2f7ee; }
+  .btn-music { background: var(--white-btn); color: #23281f; }
+
+  /* Toggle switches */
+  .toggle-row {
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot-alarm { background: var(--blue); }
+  .dot-headlights { background: var(--amber); }
+
+  .switch {
+    width: 52px;
+    height: 28px;
+    border-radius: 999px;
+    background: #171b14;
+    border: 1px solid var(--panel-edge);
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .switch .knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--bone-dim);
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+
+  .switch.on { background: rgba(232,163,61,0.18); border-color: var(--amber); }
+  .switch.on .knob { transform: translateX(24px); background: var(--amber); }
+
+  /* Status readout */
+  .status {
+    margin-top: 26px;
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 0.72rem;
+    color: var(--bone-dim);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--bone-dim);
+    flex-shrink: 0;
+  }
+  .status-dot.online { background: var(--green); }
+  .status-dot.offline { background: var(--red); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+
+  button:focus-visible,
+  .switch:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 3px;
+  }
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <header>
+    <h1>Jeep Bed Control</h1>
+    <div class="subtitle">Remote Panel</div>
+  </header>
+
+  <div class="section-label">Controls</div>
+  <div class="press-grid">
+    <button class="press-btn btn-engine" data-trigger="engine" aria-label="Engine Start">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>
+      Engine
+    </button>
+    <button class="press-btn btn-horn" data-trigger="horn" aria-label="Horn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a1 1 0 011 1v1.06a8.002 8.002 0 016.94 6.94H21a1 1 0 010 2h-1.06a8.002 8.002 0 01-6.94 6.94V21a1 1 0 01-2 0v-1.06a8.002 8.002 0 01-6.94-6.94H3a1 1 0 010-2h1.06A8.002 8.002 0 0111 4.06V3a1 1 0 011-1zm0 4a6 6 0 100 12 6 6 0 000-12z"/></svg>
+      Horn
+    </button>
+    <button class="press-btn btn-music" data-trigger="music" aria-label="Music">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 10v9a1 1 0 001 1h14a1 1 0 001-1v-9H4zm2 2h2v2H6v-2zm4 0h8v5h-8v-5zM7.34 4.36 12 7l4.66-2.64.99 1.74L14.66 8H20a2 2 0 012 2v1H2v-1a2 2 0 012-2h5.34L6.35 6.1l.99-1.74z"/></svg>
+      Music
+    </button>
+  </div>
+
+  <div class="section-label">Toggles</div>
+
+  <div class="toggle-row">
+    <div class="toggle-label"><span class="dot dot-alarm"></span>Alarm</div>
+    <div class="switch" data-trigger="alarm" data-toggle="true" role="switch" aria-checked="false" tabindex="0" aria-label="Alarm"><div class="knob"></div></div>
+  </div>
+
+  <div class="toggle-row">
+    <div class="toggle-label"><span class="dot dot-headlights"></span>Headlights</div>
+    <div class="switch" data-trigger="headlights" data-toggle="true" role="switch" aria-checked="false" tabindex="0" aria-label="Headlights"><div class="knob"></div></div>
+  </div>
+
+  <div class="status">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">Checking connection&hellip;</span>
+  </div>
+</div>
+
+<script>
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+
+  function setStatus(online, message) {
+    statusDot.className = 'status-dot ' + (online ? 'online' : 'offline');
+    statusText.textContent = message;
+  }
+
+  function checkConnection() {
+    fetch('/api/triggers')
+      .then(r => r.ok ? setStatus(true, 'Connected') : setStatus(false, 'Server error'))
+      .catch(() => setStatus(false, 'Offline \u2014 check network'));
+  }
+  checkConnection();
+
+  function fire(name) {
+    fetch('/trigger/' + name, { method: 'POST' })
+      .then(r => {
+        if (!r.ok) throw new Error('bad response');
+        return r.json();
+      })
+      .then(() => {
+        const now = new Date().toLocaleTimeString();
+        setStatus(true, `${name.toUpperCase()} triggered \u00b7 ${now}`);
+      })
+      .catch(() => setStatus(false, `Failed to trigger ${name}`));
+  }
+
+  document.querySelectorAll('.press-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.trigger;
+      btn.classList.add('is-active');
+      setTimeout(() => btn.classList.remove('is-active'), 150);
+      fire(name);
+    });
+  });
+
+  document.querySelectorAll('.switch').forEach(sw => {
+    function toggle() {
+      const isOn = sw.classList.toggle('on');
+      sw.setAttribute('aria-checked', isOn);
+      fire(sw.dataset.trigger);
+    }
+    sw.addEventListener('click', toggle);
+    sw.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  });
+</script>
+
+</body>
+</html>
