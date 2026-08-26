@@ -34,13 +34,13 @@ WIRING SUMMARY
       before wiring directly).
 
 REMOTE TRIGGERING (Flask):
-    Visiting http://<pi-ip>:5000/ in a browser loads index.html -- a
+    Visiting http://<pi-ip>/ in a browser loads index.html -- a
     one-page control panel with all 5 buttons. index.html MUST live in
     the same folder as this script. Find the Pi's IP with `hostname -I`.
     Buttons can also be triggered directly, e.g. with curl:
-        curl -X POST http://<pi-ip>:5000/trigger/horn
+        curl -X POST http://<pi-ip>/trigger/horn
     Valid names: engine, horn, music, alarm, headlights
-    GET http://<pi-ip>:5000/api/triggers lists all available triggers.
+    GET http://<pi-ip>/api/triggers lists all available triggers.
     No authentication -- keep this on a trusted home network only, do
     not port-forward this to the public internet.
 
@@ -369,12 +369,12 @@ def build_homekit_bridge():
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(
-        target=lambda: app.run(host="0.0.0.0", port=5000, use_reloader=False),
+        target=lambda: app.run(host="0.0.0.0", port=80, use_reloader=False),
         daemon=True,
     )
     flask_thread.start()
 
-    print("Jeep bed controller running. Web panel on port 5000. Starting HomeKit bridge...")
+    print("Jeep bed controller running. Web panel on port 80. Starting HomeKit bridge...")
     homekit_driver = build_homekit_bridge()
     homekit_driver.start()  # blocks; handles SIGINT/SIGTERM and calls JeepBridge.stop()
 
