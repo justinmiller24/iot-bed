@@ -391,6 +391,7 @@ if __name__ == "__main__":
 # WorkingDirectory=/home/iot/iot-bed
 # Restart=always
 # User=root
+# KillSignal=SIGINT
 #
 # [Install]
 # WantedBy=multi-user.target
