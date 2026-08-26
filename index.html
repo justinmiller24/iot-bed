@@ -260,7 +260,7 @@
   checkConnection();
 
   function fire(name) {
-    fetch('/trigger/' + name, { method: 'POST' })
+    fetch('/trigger/' + name, { method: 'GET' })
       .then(r => {
         if (!r.ok) throw new Error('bad response');
         return r.json();
