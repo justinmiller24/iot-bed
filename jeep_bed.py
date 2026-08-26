@@ -38,7 +38,7 @@ REMOTE TRIGGERING (Flask):
     one-page control panel with all 5 buttons. index.html MUST live in
     the same folder as this script. Find the Pi's IP with `hostname -I`.
     Buttons can also be triggered directly, e.g. with curl:
-        curl -X POST http://<pi-ip>/trigger/horn
+        curl http://<pi-ip>/trigger/horn
     Valid names: engine, horn, music, alarm, headlights
     GET http://<pi-ip>/api/triggers lists all available triggers.
     No authentication -- keep this on a trusted home network only, do
@@ -274,7 +274,7 @@ def api_triggers():
     return jsonify(available_triggers=list(TRIGGERS.keys()))
 
 
-@app.route("/trigger/<name>", methods=["POST"])
+@app.route("/trigger/<name>", methods=["GET"])
 def trigger(name):
     if name not in TRIGGERS:
         return jsonify(error=f"unknown trigger '{name}'", available=list(TRIGGERS.keys())), 404
