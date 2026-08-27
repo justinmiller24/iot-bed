@@ -190,6 +190,36 @@
   .status-dot.online { background: var(--green); }
   .status-dot.offline { background: var(--red); }
 
+  /* System controls */
+  .system-section {
+    margin-top: 30px;
+    padding-top: 18px;
+    border-top: 1px solid var(--panel-edge);
+  }
+
+  .system-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .system-btn {
+    background: transparent;
+    border: 1px solid var(--panel-edge);
+    color: var(--bone-dim);
+    border-radius: 8px;
+    padding: 12px 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .system-btn:hover { border-color: var(--bone-dim); color: var(--bone); }
+  .system-btn.danger:hover { border-color: var(--red); color: var(--red); }
+
   @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; }
   }
@@ -241,6 +271,15 @@
     <span class="status-dot" id="statusDot"></span>
     <span id="statusText">Checking connection&hellip;</span>
   </div>
+
+  <div class="system-section">
+    <div class="section-label">System</div>
+    <div class="system-grid">
+      <button class="system-btn" data-system="restart-service">Restart<br>Service</button>
+      <button class="system-btn danger" data-system="reboot">Reboot<br>Pi</button>
+      <button class="system-btn danger" data-system="shutdown">Shutdown<br>Pi</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -260,7 +299,7 @@
   checkConnection();
 
   function fire(name) {
-    fetch('/trigger/' + name, { method: 'GET' })
+    fetch('/trigger/' + name)
       .then(r => {
         if (!r.ok) throw new Error('bad response');
         return r.json();
@@ -290,6 +329,28 @@
     sw.addEventListener('click', toggle);
     sw.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  });
+
+  const SYSTEM_CONFIRM = {
+    'restart-service': null,
+    'reboot': 'Reboot the Raspberry Pi? It will be offline for about a minute.',
+    'shutdown': 'Shut down the Raspberry Pi? You will need physical access (or the smart plug) to turn it back on.',
+  };
+
+  document.querySelectorAll('.system-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.system;
+      const confirmMsg = SYSTEM_CONFIRM[action];
+      if (confirmMsg && !confirm(confirmMsg)) return;
+
+      fetch('/system/' + action)
+        .then(r => {
+          if (!r.ok) throw new Error('bad response');
+          return r.json();
+        })
+        .then(() => setStatus(true, `${action} triggered\u2026`))
+        .catch(() => setStatus(false, `Failed to trigger ${action}`));
     });
   });
 </script>

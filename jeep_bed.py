@@ -34,15 +34,23 @@ WIRING SUMMARY
       before wiring directly).
 
 REMOTE TRIGGERING (Flask):
-    Visiting http://<pi-ip>/ in a browser loads index.html -- a
-    one-page control panel with all 5 buttons. index.html MUST live in
-    the same folder as this script. Find the Pi's IP with `hostname -I`.
+    Visiting http://<pi-ip>/ in a browser loads index.html -- a one-page
+    control panel with all 5 buttons. index.html MUST live in the same
+    folder as this script. Find the Pi's IP with `hostname -I`.
     Buttons can also be triggered directly, e.g. with curl:
         curl http://<pi-ip>/trigger/horn
     Valid names: engine, horn, music, alarm, headlights
     GET http://<pi-ip>/api/triggers lists all available triggers.
     No authentication -- keep this on a trusted home network only, do
     not port-forward this to the public internet.
+
+SYSTEM CONTROLS:
+    The web panel also has restart/reboot/shutdown buttons, backed by:
+        GET http://<pi-ip>/system/restart-service
+        GET http://<pi-ip>/system/reboot
+        GET http://<pi-ip>/system/shutdown
+    These run with no auth beyond being on your home network -- same
+    caution as above applies, more so given what they can do.
 
 APPLE HOMEKIT (HAP-python):
     This script also runs as its own HomeKit bridge -- no separate
@@ -57,6 +65,7 @@ Run manually to test:
 """
 
 import os
+import subprocess
 import time
 import threading
 
@@ -285,6 +294,35 @@ def trigger(name):
         threading.Thread(target=_auto_release, args=(release_fn, hold_seconds), daemon=True).start()
 
     return jsonify(status="triggered", action=name)
+
+
+# ---------------------------------------------------------------------------
+# SYSTEM CONTROLS -- restart the service, reboot, or shut down the Pi
+# ---------------------------------------------------------------------------
+# Runs as root already (see systemd User=root), so these commands work
+# directly with no sudo needed. Each is delayed ~1s in a background thread
+# so the HTTP response actually reaches the browser before the process
+# handling it disappears.
+
+SYSTEM_COMMANDS = {
+    "restart-service": ["systemctl", "restart", "jeepbed.service"],
+    "reboot": ["reboot"],
+    "shutdown": ["shutdown", "-h", "now"],
+}
+
+
+def _delayed_command(cmd, delay=1.0):
+    time.sleep(delay)
+    subprocess.run(cmd, check=False)
+
+
+@app.route("/system/<action>", methods=["GET"])
+def system_control(action):
+    if action not in SYSTEM_COMMANDS:
+        return jsonify(error=f"unknown system action '{action}'", available=list(SYSTEM_COMMANDS.keys())), 404
+
+    threading.Thread(target=_delayed_command, args=(SYSTEM_COMMANDS[action],), daemon=True).start()
+    return jsonify(status="executing", action=action)
 
 
 # ---------------------------------------------------------------------------
