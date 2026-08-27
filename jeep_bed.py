@@ -51,6 +51,11 @@ SYSTEM CONTROLS:
         GET http://<pi-ip>/system/shutdown
     These run with no auth beyond being on your home network -- same
     caution as above applies, more so given what they can do.
+    All three are also exposed as HomeKit switches ("Restart Jeep
+    Service", "Reboot Jeep Bed", "Shutdown Jeep Bed") -- useful for
+    building a Home app automation that shuts the Pi down cleanly,
+    then (with a short delay after) turns off the smart plug powering
+    it, avoiding the SD card corruption risk of a hard power cut.
 
 APPLE HOMEKIT (HAP-python):
     This script also runs as its own HomeKit bridge -- no separate
@@ -379,6 +384,20 @@ class JeepBridge(Bridge):
         super().stop()
 
 
+def make_system_press_fn(action):
+    """Returns a press_fn that fires the given SYSTEM_COMMANDS entry."""
+    def press():
+        print(f"[system] {action} requested (via HomeKit)")
+        threading.Thread(target=_delayed_command, args=(SYSTEM_COMMANDS[action],), daemon=True).start()
+    return press
+
+
+def system_noop_release():
+    """System switches have no physical state to release -- just resets the
+    HomeKit toggle back to Off visually."""
+    pass
+
+
 def build_homekit_bridge():
     global engine_accessory, horn_accessory, music_accessory
     global alarm_accessory, headlight_accessory
@@ -394,7 +413,20 @@ def build_homekit_bridge():
     alarm_accessory = ToggleSwitch(driver, "Alarm", lambda value: set_alarm(bool(value)))
     headlight_accessory = ToggleSwitch(driver, "Headlights", lambda value: set_headlights(bool(value)))
 
-    for accessory in (engine_accessory, horn_accessory, music_accessory, alarm_accessory, headlight_accessory):
+    # System controls -- short hold_seconds so the Home app switch flips
+    # back to Off quickly, well before reboot/shutdown actually happens
+    # (the 1s delay baked into _delayed_command still applies underneath).
+    restart_service_accessory = MomentarySwitch(
+        driver, "Restart Jeep Service", make_system_press_fn("restart-service"), system_noop_release, 1.5)
+    reboot_accessory = MomentarySwitch(
+        driver, "Reboot Jeep Bed", make_system_press_fn("reboot"), system_noop_release, 1.5)
+    shutdown_accessory = MomentarySwitch(
+        driver, "Shutdown Jeep Bed", make_system_press_fn("shutdown"), system_noop_release, 1.5)
+
+    for accessory in (
+        engine_accessory, horn_accessory, music_accessory, alarm_accessory, headlight_accessory,
+        restart_service_accessory, reboot_accessory, shutdown_accessory,
+    ):
         bridge.add_accessory(accessory)
 
     driver.add_accessory(accessory=bridge)
