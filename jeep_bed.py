@@ -19,13 +19,17 @@ CLONE GIT REPO
 FORCE AUDIO OUT THE 3.5MM JACK:
     sudo raspi-config  ->  System Options -> Audio -> Headphones
 
-WIRING SUMMARY
-    - Engine:     button GPIO 22, LED GPIO 16 (green)
-    - Horn:       button GPIO 17, LED GPIO 4  (red)
-    - Music:      button GPIO 23, LED GPIO 20 (white)
-    - Alarm:      button GPIO 27, LED GPIO 12 (blue)
-    - Headlights: button GPIO 24 (both physical buttons wired in parallel
-                  to this same pin), LED GPIO 25
+WIRING SUMMARY (paired for adjacent physical header pins, per case layout)
+    - Engine:     button GPIO 22, LED GPIO 23 (green)
+    - Horn:       button GPIO 17, LED GPIO 18 (red)
+    - Music:      button GPIO 20, LED GPIO 12 (white)
+    - Alarm:      button GPIO 27, LED GPIO 4  (blue)
+    - Headlight Left:  button GPIO 24, LED GPIO 25
+    - Headlight Right: button GPIO 5,  LED GPIO 6
+      (Either headlight button alone turns BOTH headlight LEDs on/off
+      together. Pressing both buttons at the same time instead fires
+      on_headlights_combo() -- currently a placeholder triple-flash;
+      edit that function's body once you've decided what it should do.)
     - Buttons: one leg to GPIO, other to GND. gpiozero uses the internal
       pull-up, no external resistor needed.
     - Every LED: GPIO -> MOSFET/transistor driver -> LED -> supply (or
@@ -65,6 +69,11 @@ APPLE HOMEKIT (HAP-python):
     homekit.state (in the same folder as this script) so re-pairing
     isn't needed after a reboot -- don't delete that file.
 
+STARTUP CUE:
+    When the script finishes loading and buttons go live, both headlights
+    and the horn LED flash 3 times while sounds/horn-long.mp3 plays --
+    make sure that file exists in sounds/ or startup will throw an error.
+
 Run manually to test:
     sudo python3 jeep_bed.py
 """
@@ -90,19 +99,19 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # GREEN
 ENGINE_BUTTON_PIN = 22
-ENGINE_LED_PIN = 16
+ENGINE_LED_PIN = 23
 ENGINE_SOUND = "sounds/engine.wav"
 ENGINE_HOLD_SECONDS = 2.2
 
 # RED
 HORN_BUTTON_PIN = 17
-HORN_LED_PIN = 4
+HORN_LED_PIN = 18
 HORN_SOUND = "sounds/horn.mp3"
 HORN_HOLD_SECONDS = 1.2
 
 # WHITE
-MUSIC_BUTTON_PIN = 23
-MUSIC_LED_PIN = 20
+MUSIC_BUTTON_PIN = 20
+MUSIC_LED_PIN = 12
 MUSIC_SOUNDS = [
     "sounds/cb_radio.wav",
     "sounds/gravel.wav",
@@ -112,12 +121,17 @@ MUSIC_HOLD_SECONDS = 1.0
 
 # BLUE
 ALARM_BUTTON_PIN = 27
-ALARM_LED_PIN = 12
+ALARM_LED_PIN = 4
 ALARM_SOUND = "sounds/alarm.wav"
 
-# HEADLIGHTS
-HEADLIGHT_BUTTON_PIN = 24   # both physical headlight buttons wired here
-HEADLIGHT_LED_PIN = 25
+# HEADLIGHTS -- independently controlled left/right
+HEADLIGHT_LEFT_BUTTON_PIN = 24
+HEADLIGHT_LEFT_LED_PIN = 25
+HEADLIGHT_RIGHT_BUTTON_PIN = 5
+HEADLIGHT_RIGHT_LED_PIN = 6
+
+# STARTUP -- played/flashed once when the script finishes loading
+STARTUP_SOUND = "sounds/horn-long.mp3"
 
 
 # ---------------------------------------------------------------------------
@@ -131,18 +145,21 @@ horn_sound = pygame.mixer.Sound(HORN_SOUND)
 music_sounds = [pygame.mixer.Sound(f) for f in MUSIC_SOUNDS]
 music_index = 0
 alarm_sound = pygame.mixer.Sound(ALARM_SOUND)
+startup_sound = pygame.mixer.Sound(STARTUP_SOUND)
 
 engine_button = Button(ENGINE_BUTTON_PIN, bounce_time=0.05)
 horn_button = Button(HORN_BUTTON_PIN, bounce_time=0.05)
 music_button = Button(MUSIC_BUTTON_PIN, bounce_time=0.05)
 alarm_button = Button(ALARM_BUTTON_PIN, bounce_time=0.05)
-headlight_button = Button(HEADLIGHT_BUTTON_PIN, bounce_time=0.05)
+headlight_left_button = Button(HEADLIGHT_LEFT_BUTTON_PIN, bounce_time=0.05)
+headlight_right_button = Button(HEADLIGHT_RIGHT_BUTTON_PIN, bounce_time=0.05)
 
 engine_led = LED(ENGINE_LED_PIN, active_high=False)
 horn_led = LED(HORN_LED_PIN, active_high=False)
 music_led = LED(MUSIC_LED_PIN, active_high=False)
 alarm_led = LED(ALARM_LED_PIN, active_high=False)
-headlight_led = LED(HEADLIGHT_LED_PIN, active_high=False)
+headlight_left_led = LED(HEADLIGHT_LEFT_LED_PIN, active_high=False)
+headlight_right_led = LED(HEADLIGHT_RIGHT_LED_PIN, active_high=False)
 
 alarm_active = threading.Event()
 
@@ -181,10 +198,18 @@ def on_horn_press():
     print("[horn] pressed")
     horn_led.on()
     horn_sound.play()
-    if not headlight_led.is_lit:
-        headlight_led.on()
+    was_left_off = not headlight_left_led.is_lit
+    was_right_off = not headlight_right_led.is_lit
+    if was_left_off:
+        headlight_left_led.on()
+    if was_right_off:
+        headlight_right_led.on()
+    if was_left_off or was_right_off:
         time.sleep(0.15)
-        headlight_led.off()
+        if was_left_off:
+            headlight_left_led.off()
+        if was_right_off:
+            headlight_right_led.off()
 
 def on_horn_release():
     horn_led.off()
@@ -236,38 +261,104 @@ alarm_button.when_pressed = on_alarm_button_press
 
 
 # ---------------------------------------------------------------------------
-# 5. HEADLIGHTS -- toggle (shared by both physical buttons)
+# 5. HEADLIGHTS -- either button alone turns both on/off together;
+#    pressing BOTH at the same time triggers a separate combo action.
 # ---------------------------------------------------------------------------
 
-def set_headlights(state):
+HEADLIGHT_COMBO_WINDOW = 0.15  # seconds -- how close together both presses
+                                # must land to count as "pressed together"
+
+_headlight_combo_lock = threading.Lock()
+_headlight_last_combo_time = 0.0
+
+
+def set_headlight_left(state):
     if state:
-        headlight_led.on()
+        headlight_left_led.on()
     else:
-        headlight_led.off()
+        headlight_left_led.off()
+
+
+def set_headlight_right(state):
+    if state:
+        headlight_right_led.on()
+    else:
+        headlight_right_led.off()
+
+
+def set_headlights(state):
+    """Turns both headlights on/off together -- the normal single-button
+    behavior, and what remote (Flask/HomeKit) triggers use."""
+    set_headlight_left(state)
+    set_headlight_right(state)
     if headlight_accessory is not None:
         headlight_accessory.sync(state)
 
-def on_headlight_button_press():
-    new_state = not headlight_led.is_lit
+
+def on_headlights_single():
+    new_state = not headlight_left_led.is_lit
     print(f"[headlights] {'on' if new_state else 'off'}")
     set_headlights(new_state)
 
-headlight_button.when_pressed = on_headlight_button_press
+
+def on_headlights_combo():
+    """Placeholder for whatever the simultaneous-press action should be.
+    Currently just a quick triple-flash of both headlights so you can
+    confirm the combo is actually being detected -- replace this body
+    with the real behavior once you've decided what it should do."""
+    print("[headlights] COMBO pressed (both buttons together)")
+    for _ in range(3):
+        set_headlight_left(True)
+        set_headlight_right(True)
+        time.sleep(0.08)
+        set_headlight_left(False)
+        set_headlight_right(False)
+        time.sleep(0.08)
+
+
+def _handle_headlight_button(this_button, other_button):
+    global _headlight_last_combo_time
+    time.sleep(0.05)  # let the other button's edge register if it's also down
+    if other_button.is_pressed:
+        with _headlight_combo_lock:
+            now = time.monotonic()
+            if now - _headlight_last_combo_time > HEADLIGHT_COMBO_WINDOW:
+                _headlight_last_combo_time = now
+                on_headlights_combo()
+            # else: the other button's handler already fired the combo
+            # a moment ago -- don't double-trigger it.
+    else:
+        on_headlights_single()
+
+
+def on_headlight_left_button_press():
+    _handle_headlight_button(headlight_left_button, headlight_right_button)
+
+
+def on_headlight_right_button_press():
+    _handle_headlight_button(headlight_right_button, headlight_left_button)
+
+
+headlight_left_button.when_pressed = on_headlight_left_button_press
+headlight_right_button.when_pressed = on_headlight_right_button_press
 
 
 # ---------------------------------------------------------------------------
-# READY INDICATOR -- flash headlights + horn LED once buttons are live
+# READY INDICATOR -- flash both headlights + horn LED, play startup sound
 # ---------------------------------------------------------------------------
 # Confirms boot is complete and physical buttons are ready for input --
 # useful since full startup (OS boot + this script initializing) takes
 # roughly 20 seconds with no other visible cue that it's done.
 
 def flash_ready_indicator(times=3, on_seconds=0.15, off_seconds=0.15):
+    startup_sound.play()
     for _ in range(times):
-        headlight_led.on()
+        headlight_left_led.on()
+        headlight_right_led.on()
         horn_led.on()
         time.sleep(on_seconds)
-        headlight_led.off()
+        headlight_left_led.off()
+        headlight_right_led.off()
         horn_led.off()
         time.sleep(off_seconds)
 
@@ -289,7 +380,7 @@ TRIGGERS = {
     "horn": (on_horn_press, on_horn_release, HORN_HOLD_SECONDS),
     "music": (on_music_press, on_music_release, MUSIC_HOLD_SECONDS),
     "alarm": (on_alarm_button_press, None, None),
-    "headlights": (on_headlight_button_press, None, None),
+    "headlights": (on_headlights_single, None, None),
 }
 
 
@@ -398,7 +489,7 @@ class JeepBridge(Bridge):
     def stop(self):
         print("Shutting down cleanly...")
         alarm_active.clear()
-        for led in (engine_led, horn_led, music_led, alarm_led, headlight_led):
+        for led in (engine_led, horn_led, music_led, alarm_led, headlight_left_led, headlight_right_led):
             led.off()
         pygame.mixer.quit()
         super().stop()
