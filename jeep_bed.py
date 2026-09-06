@@ -19,14 +19,6 @@ CLONE GIT REPO
 FORCE AUDIO OUT THE 3.5MM JACK:
     sudo raspi-config  ->  System Options -> Audio -> Headphones
 
-PREVENT LEDS LIGHTING DURING BOOT (before this script loads):
-    GPIO pins float/default in an undefined state from power-on until this
-    script claims them, which can light active_high=False LEDs briefly.
-    Fix in /boot/firmware/config.txt (forces these pins HIGH/off from the
-    earliest point in boot, before the kernel or this script even runs):
-        gpio=4,12,16,20,25=op,dh
-    Reboot after adding this line.
-
 WIRING SUMMARY
     - Engine:     button GPIO 22, LED GPIO 16 (green)
     - Horn:       button GPIO 17, LED GPIO 4  (red)
