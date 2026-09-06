@@ -100,7 +100,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # GREEN
 ENGINE_BUTTON_PIN = 22
 ENGINE_LED_PIN = 23
-ENGINE_SOUND = "sounds/engine.wav"
+ENGINE_SOUND = "sounds/engine.mp3"
 ENGINE_HOLD_SECONDS = 2.2
 
 # RED
@@ -113,16 +113,20 @@ HORN_HOLD_SECONDS = 1.2
 MUSIC_BUTTON_PIN = 20
 MUSIC_LED_PIN = 12
 MUSIC_SOUNDS = [
-    "sounds/cb_radio.wav",
-    "sounds/gravel.wav",
-    "sounds/turbo_boost.wav",
+    "sounds/clicks.mp3",
+    "sounds/engine.mp3",
+    "sounds/horn.mp3",
+    "sounds/horn-long.mp3",
+    "sounds/reverse.mp3",
+    "sounds/truck-passing.mp3",
+    "sounds/window.mp3",
 ]
 MUSIC_HOLD_SECONDS = 1.0
 
 # BLUE
 ALARM_BUTTON_PIN = 27
 ALARM_LED_PIN = 4
-ALARM_SOUND = "sounds/alarm.wav"
+ALARM_SOUND = "sounds/alarm.mp3"
 
 # HEADLIGHTS -- independently controlled left/right
 HEADLIGHT_LEFT_BUTTON_PIN = 24
