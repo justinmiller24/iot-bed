@@ -113,7 +113,7 @@
 
   .btn-horn  { background: var(--red); color: #fdf1ef; }
   .btn-engine { background: var(--green); color: #f2f7ee; }
-  .btn-music { background: var(--white-btn); color: #23281f; }
+  .btn-noises { background: var(--white-btn); color: #23281f; }
 
   /* Toggle switches */
   .toggle-row {
@@ -138,7 +138,7 @@
   }
 
   .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .dot-alarm { background: var(--blue); }
+  .dot-siren { background: var(--blue); }
   .dot-headlights { background: var(--amber); }
 
   .switch {
@@ -249,17 +249,17 @@
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a1 1 0 011 1v1.06a8.002 8.002 0 016.94 6.94H21a1 1 0 010 2h-1.06a8.002 8.002 0 01-6.94 6.94V21a1 1 0 01-2 0v-1.06a8.002 8.002 0 01-6.94-6.94H3a1 1 0 010-2h1.06A8.002 8.002 0 0111 4.06V3a1 1 0 011-1zm0 4a6 6 0 100 12 6 6 0 000-12z"/></svg>
       Horn
     </button>
-    <button class="press-btn btn-music" data-trigger="music" aria-label="Music">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 10v9a1 1 0 001 1h14a1 1 0 001-1v-9H4zm2 2h2v2H6v-2zm4 0h8v5h-8v-5zM7.34 4.36 12 7l4.66-2.64.99 1.74L14.66 8H20a2 2 0 012 2v1H2v-1a2 2 0 012-2h5.34L6.35 6.1l.99-1.74z"/></svg>
-      Music
+    <button class="press-btn btn-noises" data-trigger="music" aria-label="Noises">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+      Noises
     </button>
   </div>
 
   <div class="section-label">Toggles</div>
 
   <div class="toggle-row">
-    <div class="toggle-label"><span class="dot dot-alarm"></span>Alarm</div>
-    <div class="switch" data-trigger="alarm" data-toggle="true" role="switch" aria-checked="false" tabindex="0" aria-label="Alarm"><div class="knob"></div></div>
+    <div class="toggle-label"><span class="dot dot-siren"></span>Siren</div>
+    <div class="switch" data-trigger="siren" data-toggle="true" role="switch" aria-checked="false" tabindex="0" aria-label="Siren"><div class="knob"></div></div>
   </div>
 
   <div class="toggle-row">

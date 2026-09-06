@@ -2,7 +2,7 @@
 """
 Jeep Bed Interactive Controller
 --------------------------------
-Raspberry Pi 4B script: 5 buttons (Engine, Horn, Music, Alarm, Headlights),
+Raspberry Pi 4B script: 5 buttons (Engine, Horn, Music, Siren, Headlights),
 sound effects out the 3.5mm jack, a Flask web control panel, and native
 Apple HomeKit support via HAP-python.
 
@@ -23,7 +23,7 @@ WIRING SUMMARY (paired for adjacent physical header pins, per case layout)
     - Engine:     button GPIO 22, LED GPIO 23 (green)
     - Horn:       button GPIO 17, LED GPIO 18 (red)
     - Music:      button GPIO 20, LED GPIO 12 (white)
-    - Alarm:      button GPIO 27, LED GPIO 4  (blue)
+    - Siren:      button GPIO 27, LED GPIO 4  (blue)
     - Headlight Left:  button GPIO 24, LED GPIO 25
     - Headlight Right: button GPIO 5,  LED GPIO 6
       (Either headlight button alone turns BOTH headlight LEDs on/off
@@ -43,7 +43,7 @@ REMOTE TRIGGERING (Flask):
     folder as this script. Find the Pi's IP with `hostname -I`.
     Buttons can also be triggered directly, e.g. with curl:
         curl http://<pi-ip>/trigger/horn
-    Valid names: engine, horn, music, alarm, headlights
+    Valid names: engine, horn, music, siren, headlights
     GET http://<pi-ip>/api/triggers lists all available triggers.
     No authentication -- keep this on a trusted home network only, do
     not port-forward this to the public internet.
@@ -74,11 +74,26 @@ STARTUP CUE:
     and the horn LED flash 3 times while sounds/horn-long.mp3 plays --
     make sure that file exists in sounds/ or startup will throw an error.
 
+DYNAMIC SOUND LOADING:
+    Engine, Horn, Music, and Siren each pull their sounds from a folder
+    instead of a hardcoded filename -- drop any .wav/.mp3/.ogg file into
+    the right folder and restart the service to pick it up, no code
+    changes needed:
+        sounds/engine/   -> Engine
+        sounds/horn/     -> Horn
+        sounds/noises/   -> Music
+        sounds/siren/    -> Siren
+    Each button cycles through its folder's files in alphabetical order,
+    one per press (Siren cycles which sound loops each time it's turned
+    on). Each folder needs at least one audio file or the script will
+    raise an error on startup.
+
 Run manually to test:
     sudo python3 jeep_bed.py
 """
 
 import os
+import glob
 import subprocess
 import time
 import threading
@@ -100,33 +115,25 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # GREEN
 ENGINE_BUTTON_PIN = 22
 ENGINE_LED_PIN = 23
-ENGINE_SOUND = "sounds/engine.mp3"
+ENGINE_SOUND_DIR = "sounds/engine"
 ENGINE_HOLD_SECONDS = 2.2
 
 # RED
 HORN_BUTTON_PIN = 17
 HORN_LED_PIN = 18
-HORN_SOUND = "sounds/horn.mp3"
+HORN_SOUND_DIR = "sounds/horn"
 HORN_HOLD_SECONDS = 1.2
 
 # WHITE
 MUSIC_BUTTON_PIN = 20
 MUSIC_LED_PIN = 12
-MUSIC_SOUNDS = [
-    "sounds/clicks.mp3",
-    "sounds/engine.mp3",
-    "sounds/horn.mp3",
-    "sounds/horn-long.mp3",
-    "sounds/reverse.mp3",
-    "sounds/truck-passing.mp3",
-    "sounds/window.mp3",
-]
+MUSIC_SOUND_DIR = "sounds/noises"
 MUSIC_HOLD_SECONDS = 1.0
 
 # BLUE
-ALARM_BUTTON_PIN = 27
-ALARM_LED_PIN = 4
-ALARM_SOUND = "sounds/alarm.mp3"
+SIREN_BUTTON_PIN = 27
+SIREN_LED_PIN = 4
+SIREN_SOUND_DIR = "sounds/siren"
 
 # HEADLIGHTS -- independently controlled left/right
 HEADLIGHT_LEFT_BUTTON_PIN = 24
@@ -139,33 +146,83 @@ STARTUP_SOUND = "sounds/horn-long.mp3"
 
 
 # ---------------------------------------------------------------------------
+# SOUND LOADING -- scans a directory so new files just need to be dropped
+# in, no code changes needed to pick them up (just a restart).
+# ---------------------------------------------------------------------------
+
+AUDIO_EXTENSIONS = ("*.wav", "*.mp3", "*.ogg")
+
+
+def load_sounds_from_dir(directory):
+    """Loads every .wav/.mp3/.ogg file in `directory` (relative to this
+    script), sorted by filename for a stable, predictable cycle order."""
+    full_dir = os.path.join(BASE_DIR, directory)
+    filepaths = []
+    for pattern in AUDIO_EXTENSIONS:
+        filepaths.extend(glob.glob(os.path.join(full_dir, pattern)))
+    filepaths.sort()
+    if not filepaths:
+        raise RuntimeError(
+            f"No audio files found in {full_dir} -- add at least one "
+            f".wav/.mp3/.ogg file there before starting the script."
+        )
+    print(f"[sounds] loaded {len(filepaths)} file(s) from {directory}")
+    return [pygame.mixer.Sound(f) for f in filepaths]
+
+
+class SoundBank:
+    """Wraps a directory of sounds and cycles through them in order --
+    each call to play_next()/play_next_loop() advances to the next file,
+    wrapping back to the start once the list is exhausted."""
+
+    def __init__(self, directory):
+        self.sounds = load_sounds_from_dir(directory)
+        self.index = 0
+
+    def _advance(self):
+        sound = self.sounds[self.index]
+        self.index = (self.index + 1) % len(self.sounds)
+        return sound
+
+    def play_next(self):
+        sound = self._advance()
+        sound.play()
+        return sound
+
+    def play_next_loop(self):
+        sound = self._advance()
+        sound.play(loops=-1)
+        return sound
+
+
+# ---------------------------------------------------------------------------
 # SETUP
 # ---------------------------------------------------------------------------
 
 pygame.mixer.init()
 
-engine_sound = pygame.mixer.Sound(ENGINE_SOUND)
-horn_sound = pygame.mixer.Sound(HORN_SOUND)
-music_sounds = [pygame.mixer.Sound(f) for f in MUSIC_SOUNDS]
-music_index = 0
-alarm_sound = pygame.mixer.Sound(ALARM_SOUND)
+engine_sounds = SoundBank(ENGINE_SOUND_DIR)
+horn_sounds = SoundBank(HORN_SOUND_DIR)
+music_sounds = SoundBank(MUSIC_SOUND_DIR)
+siren_sounds = SoundBank(SIREN_SOUND_DIR)
+_current_siren_sound = None
 startup_sound = pygame.mixer.Sound(STARTUP_SOUND)
 
 engine_button = Button(ENGINE_BUTTON_PIN, bounce_time=0.05)
 horn_button = Button(HORN_BUTTON_PIN, bounce_time=0.05)
 music_button = Button(MUSIC_BUTTON_PIN, bounce_time=0.05)
-alarm_button = Button(ALARM_BUTTON_PIN, bounce_time=0.05)
+siren_button = Button(SIREN_BUTTON_PIN, bounce_time=0.05)
 headlight_left_button = Button(HEADLIGHT_LEFT_BUTTON_PIN, bounce_time=0.05)
 headlight_right_button = Button(HEADLIGHT_RIGHT_BUTTON_PIN, bounce_time=0.05)
 
 engine_led = LED(ENGINE_LED_PIN, active_high=False)
 horn_led = LED(HORN_LED_PIN, active_high=False)
 music_led = LED(MUSIC_LED_PIN, active_high=False)
-alarm_led = LED(ALARM_LED_PIN, active_high=False)
+siren_led = LED(SIREN_LED_PIN, active_high=False)
 headlight_left_led = LED(HEADLIGHT_LEFT_LED_PIN, active_high=False)
 headlight_right_led = LED(HEADLIGHT_RIGHT_LED_PIN, active_high=False)
 
-alarm_active = threading.Event()
+siren_active = threading.Event()
 
 # HomeKit accessory objects, assigned once the bridge is built further down.
 # Referenced (not called) by the functions below, so it's fine that they're
@@ -173,7 +230,7 @@ alarm_active = threading.Event()
 engine_accessory = None
 horn_accessory = None
 music_accessory = None
-alarm_accessory = None
+siren_accessory = None
 headlight_accessory = None
 
 
@@ -184,7 +241,7 @@ headlight_accessory = None
 def on_engine_press():
     print("[engine] start")
     engine_led.on()
-    engine_sound.play()
+    engine_sounds.play_next()
 
 
 def on_engine_release():
@@ -201,7 +258,7 @@ engine_button.when_released = on_engine_release
 def on_horn_press():
     print("[horn] pressed")
     horn_led.on()
-    horn_sound.play()
+    horn_sounds.play_next()
     was_left_off = not headlight_left_led.is_lit
     was_right_off = not headlight_right_led.is_lit
     if was_left_off:
@@ -227,11 +284,9 @@ horn_button.when_released = on_horn_release
 # ---------------------------------------------------------------------------
 
 def on_music_press():
-    global music_index
-    print(f"[music] playing clip {music_index}")
+    print("[music] playing next clip")
     music_led.on()
-    music_sounds[music_index].play()
-    music_index = (music_index + 1) % len(music_sounds)
+    music_sounds.play_next()
 
 def on_music_release():
     music_led.off()
@@ -241,27 +296,29 @@ music_button.when_released = on_music_release
 
 
 # ---------------------------------------------------------------------------
-# 4. ALARM (blue) -- toggle: sound loops until pressed again
+# 4. SIREN (blue) -- toggle: sound loops until pressed again
 # ---------------------------------------------------------------------------
 
-def set_alarm(state):
+def set_siren(state):
+    global _current_siren_sound
     if state:
-        alarm_active.set()
-        alarm_sound.play(loops=-1)
-        alarm_led.on()
+        siren_active.set()
+        _current_siren_sound = siren_sounds.play_next_loop()
+        siren_led.on()
     else:
-        alarm_active.clear()
-        alarm_sound.stop()
-        alarm_led.off()
-    if alarm_accessory is not None:
-        alarm_accessory.sync(state)
+        siren_active.clear()
+        if _current_siren_sound is not None:
+            _current_siren_sound.stop()
+        siren_led.off()
+    if siren_accessory is not None:
+        siren_accessory.sync(state)
 
-def on_alarm_button_press():
-    new_state = not alarm_active.is_set()
-    print(f"[alarm] {'on' if new_state else 'off'}")
-    set_alarm(new_state)
+def on_siren_button_press():
+    new_state = not siren_active.is_set()
+    print(f"[siren] {'on' if new_state else 'off'}")
+    set_siren(new_state)
 
-alarm_button.when_pressed = on_alarm_button_press
+siren_button.when_pressed = on_siren_button_press
 
 
 # ---------------------------------------------------------------------------
@@ -383,7 +440,7 @@ TRIGGERS = {
     "engine": (on_engine_press, on_engine_release, ENGINE_HOLD_SECONDS),
     "horn": (on_horn_press, on_horn_release, HORN_HOLD_SECONDS),
     "music": (on_music_press, on_music_release, MUSIC_HOLD_SECONDS),
-    "alarm": (on_alarm_button_press, None, None),
+    "siren": (on_siren_button_press, None, None),
     "headlights": (on_headlights_single, None, None),
 }
 
@@ -473,7 +530,7 @@ class MomentarySwitch(Accessory):
 
 
 class ToggleSwitch(Accessory):
-    """HomeKit switch that reflects a real on/off state (alarm, headlights)."""
+    """HomeKit switch that reflects a real on/off state (siren, headlights)."""
     category = CATEGORY_SWITCH
 
     def __init__(self, driver, name, set_fn):
@@ -492,8 +549,8 @@ class JeepBridge(Bridge):
 
     def stop(self):
         print("Shutting down cleanly...")
-        alarm_active.clear()
-        for led in (engine_led, horn_led, music_led, alarm_led, headlight_left_led, headlight_right_led):
+        siren_active.clear()
+        for led in (engine_led, horn_led, music_led, siren_led, headlight_left_led, headlight_right_led):
             led.off()
         pygame.mixer.quit()
         super().stop()
@@ -515,7 +572,7 @@ def system_noop_release():
 
 def build_homekit_bridge():
     global engine_accessory, horn_accessory, music_accessory
-    global alarm_accessory, headlight_accessory
+    global siren_accessory, headlight_accessory
 
     persist_file = os.path.join(BASE_DIR, "homekit.state")
     driver = AccessoryDriver(port=51826, persist_file=persist_file)
@@ -525,7 +582,7 @@ def build_homekit_bridge():
     engine_accessory = MomentarySwitch(driver, "Engine", on_engine_press, on_engine_release, ENGINE_HOLD_SECONDS)
     horn_accessory = MomentarySwitch(driver, "Horn", on_horn_press, on_horn_release, HORN_HOLD_SECONDS)
     music_accessory = MomentarySwitch(driver, "Music", on_music_press, on_music_release, MUSIC_HOLD_SECONDS)
-    alarm_accessory = ToggleSwitch(driver, "Alarm", lambda value: set_alarm(bool(value)))
+    siren_accessory = ToggleSwitch(driver, "Siren", lambda value: set_siren(bool(value)))
     headlight_accessory = ToggleSwitch(driver, "Headlights", lambda value: set_headlights(bool(value)))
 
     # System controls -- short hold_seconds so the Home app switch flips
@@ -539,7 +596,7 @@ def build_homekit_bridge():
         driver, "Shutdown Jeep Bed", make_system_press_fn("shutdown"), system_noop_release, 1.5)
 
     for accessory in (
-        engine_accessory, horn_accessory, music_accessory, alarm_accessory, headlight_accessory,
+        engine_accessory, horn_accessory, music_accessory, siren_accessory, headlight_accessory,
         restart_service_accessory, reboot_accessory, shutdown_accessory,
     ):
         bridge.add_accessory(accessory)
