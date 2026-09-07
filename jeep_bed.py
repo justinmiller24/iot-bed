@@ -20,7 +20,7 @@ FORCE AUDIO OUT THE 3.5MM JACK:
     sudo raspi-config  ->  System Options -> Audio -> Headphones
 
 AUDIO BUFFER (ALSA underrun errors in logs):
-    pygame.mixer.pre_init() sets buffer=8192 to reduce ALSA "underrun
+    pygame.mixer.pre_init() sets buffer=4096 to reduce ALSA "underrun
     occurred" errors, which show up when the audio buffer runs dry
     faster than the Pi can refill it -- common with lots of short sound
     effects firing frequently. If underruns still appear, try doubling
