@@ -179,8 +179,8 @@ STARTUP_SOUND = "sounds/horn-long.mp3"
 AUDIO_EXTENSIONS = ("*.wav", "*.mp3", "*.ogg")
 
 
-def load_sounds_from_dir(directory):
-    """Loads every .wav/.mp3/.ogg file in `directory` (relative to this
+def find_audio_files(directory):
+    """Finds every .wav/.mp3/.ogg file in `directory` (relative to this
     script), sorted by filename for a stable, predictable cycle order."""
     full_dir = os.path.join(BASE_DIR, directory)
     filepaths = []
@@ -193,32 +193,35 @@ def load_sounds_from_dir(directory):
             f".wav/.mp3/.ogg file there before starting the script."
         )
     print(f"[sounds] loaded {len(filepaths)} file(s) from {directory}")
-    return [pygame.mixer.Sound(f) for f in filepaths]
+    return filepaths
 
 
 class SoundBank:
     """Wraps a directory of sounds and cycles through them in order --
     each call to play_next()/play_next_loop() advances to the next file,
-    wrapping back to the start once the list is exhausted."""
+    wrapping back to the start once the list is exhausted. Returns both
+    the Sound object and its filename so callers can log what's playing."""
 
     def __init__(self, directory):
-        self.sounds = load_sounds_from_dir(directory)
+        self.filepaths = find_audio_files(directory)
+        self.sounds = [pygame.mixer.Sound(f) for f in self.filepaths]
         self.index = 0
 
     def _advance(self):
         sound = self.sounds[self.index]
+        filename = os.path.basename(self.filepaths[self.index])
         self.index = (self.index + 1) % len(self.sounds)
-        return sound
+        return sound, filename
 
     def play_next(self):
-        sound = self._advance()
+        sound, filename = self._advance()
         sound.play()
-        return sound
+        return sound, filename
 
     def play_next_loop(self):
-        sound = self._advance()
+        sound, filename = self._advance()
         sound.play(loops=-1)
-        return sound
+        return sound, filename
 
 
 # ---------------------------------------------------------------------------
@@ -263,12 +266,14 @@ startup_sound = pygame.mixer.Sound(STARTUP_SOUND)
 _current_control_sound = None
 
 
-def _play_control_sound(sound_bank):
+def _play_control_sound(label, sound_bank):
     global _current_control_sound
     if _current_control_sound is not None:
         _current_control_sound.stop()
-    _current_control_sound = sound_bank.play_next()
-    return _current_control_sound
+    sound, filename = sound_bank.play_next()
+    print(f"[{label}] playing {filename}")
+    _current_control_sound = sound
+    return sound
 
 engine_button = Button(ENGINE_BUTTON_PIN, bounce_time=0.05)
 horn_button = Button(HORN_BUTTON_PIN, bounce_time=0.05)
@@ -301,9 +306,8 @@ headlight_accessory = None
 # ---------------------------------------------------------------------------
 
 def on_engine_press():
-    print("[engine] start")
     engine_led.on()
-    _play_control_sound(engine_sounds)
+    _play_control_sound("engine", engine_sounds)
 
 
 def on_engine_release():
@@ -318,9 +322,8 @@ engine_button.when_released = on_engine_release
 # ---------------------------------------------------------------------------
 
 def on_horn_press():
-    print("[horn] pressed")
     horn_led.on()
-    _play_control_sound(horn_sounds)
+    _play_control_sound("horn", horn_sounds)
     was_left_off = not headlight_left_led.is_lit
     was_right_off = not headlight_right_led.is_lit
     if was_left_off:
@@ -346,9 +349,8 @@ horn_button.when_released = on_horn_release
 # ---------------------------------------------------------------------------
 
 def on_music_press():
-    print("[music] playing next clip")
     music_led.on()
-    _play_control_sound(music_sounds)
+    _play_control_sound("music", music_sounds)
 
 def on_music_release():
     music_led.off()
@@ -365,7 +367,8 @@ def set_siren(state):
     global _current_siren_sound
     if state:
         siren_active.set()
-        _current_siren_sound = siren_sounds.play_next_loop()
+        _current_siren_sound, filename = siren_sounds.play_next_loop()
+        print(f"[siren] looping {filename}")
         siren_led.on()
     else:
         siren_active.clear()
