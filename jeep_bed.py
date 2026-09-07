@@ -19,14 +19,17 @@ CLONE GIT REPO
 FORCE AUDIO OUT THE 3.5MM JACK:
     sudo raspi-config  ->  System Options -> Audio -> Headphones
 
-AUDIO BUFFER (ALSA underrun errors in logs):
-    pygame.mixer.pre_init() sets buffer=4096 to reduce ALSA "underrun
-    occurred" errors, which show up when the audio buffer runs dry
-    faster than the Pi can refill it -- common with lots of short sound
-    effects firing frequently. If underruns still appear, try doubling
-    to buffer=8192 (adds a bit more latency, ~90ms more at 44100Hz, but
-    more headroom against dropouts). If they're gone but sounds feel
-    delayed, try dropping to buffer=2048 instead.
+AUDIO BUFFER / ALSA "underrun occurred" LOG SPAM:
+    Confirmed cosmetic in this build -- audio plays back cleanly with no
+    audible glitches even when these messages appear, so buffer size
+    tuning wasn't the fix (tested 4096 and 8192 with no difference).
+    ALSA prints these directly to stderr from the C library itself,
+    bypassing Python entirely, which is why they show up as raw noise in
+    `journalctl -u jeepbed.service`. Fixed by installing a silent ALSA
+    error handler via ctypes before pygame.mixer.init() -- see SETUP
+    section below. If you ever DO hear actual audio glitches, that's a
+    different problem (real underrun) and worth revisiting buffer size
+    or switching to a USB audio dongle instead of the onboard jack.
 
 WIRING SUMMARY (paired for adjacent physical header pins, per case layout)
     - Engine:     button GPIO 22, LED GPIO 23 (green)
@@ -106,6 +109,7 @@ import glob
 import subprocess
 import time
 import threading
+import ctypes
 
 from gpiozero import Button, LED
 import pygame
@@ -207,6 +211,26 @@ class SoundBank:
 # ---------------------------------------------------------------------------
 # SETUP
 # ---------------------------------------------------------------------------
+
+# Silences ALSA's own low-level messages (e.g. "underrun occurred"), which
+# print straight to stderr from the C library itself -- confirmed cosmetic
+# in this build (audio plays back cleanly regardless), so this just stops
+# them from spamming `journalctl -u jeepbed.service`.
+try:
+    _ALSA_ERROR_HANDLER = ctypes.CFUNCTYPE(
+        None, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p
+    )
+
+    def _silent_alsa_error(filename, line, function, err, fmt):
+        pass
+
+    _c_alsa_error_handler = _ALSA_ERROR_HANDLER(_silent_alsa_error)
+    _asound = ctypes.cdll.LoadLibrary("libasound.so.2")
+    _asound.snd_lib_error_set_handler(_c_alsa_error_handler)
+except OSError:
+    # libasound.so.2 not found on this system -- harmless, just means the
+    # underrun messages will still print, nothing else is affected.
+    pass
 
 pygame.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=4096)
 pygame.mixer.init()
