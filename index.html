@@ -166,6 +166,66 @@
   .switch.on { background: rgba(232,163,61,0.18); border-color: var(--amber); }
   .switch.on .knob { transform: translateX(24px); background: var(--amber); }
 
+  /* Volume slider */
+  .volume-row {
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-top: 12px;
+  }
+
+  .volume-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .volume-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--bone-dim);
+  }
+
+  .volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background: linear-gradient(to right, var(--amber) 0%, var(--amber) var(--fill, 70%), #171b14 var(--fill, 70%), #171b14 100%);
+    outline: none;
+    cursor: pointer;
+  }
+
+  .volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--amber);
+    border: 2px solid var(--bg);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    cursor: pointer;
+  }
+
+  .volume-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--amber);
+    border: 2px solid var(--bg);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    cursor: pointer;
+    border: none;
+  }
+
   /* Status readout */
   .status {
     margin-top: 26px;
@@ -267,6 +327,14 @@
     <div class="switch" data-trigger="headlights" data-toggle="true" role="switch" aria-checked="false" tabindex="0" aria-label="Headlights"><div class="knob"></div></div>
   </div>
 
+  <div class="volume-row">
+    <div class="volume-label-row">
+      <span>Volume</span>
+      <span class="volume-value" id="volumeValue">--%</span>
+    </div>
+    <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="70" aria-label="Volume">
+  </div>
+
   <div class="status">
     <span class="status-dot" id="statusDot"></span>
     <span id="statusText">Checking connection&hellip;</span>
@@ -297,6 +365,43 @@
       .catch(() => setStatus(false, 'Offline \u2014 check network'));
   }
   checkConnection();
+
+  const volumeSlider = document.getElementById('volumeSlider');
+  const volumeValue = document.getElementById('volumeValue');
+  let volumeDebounceTimer = null;
+
+  function updateVolumeFill(level) {
+    volumeSlider.style.setProperty('--fill', level + '%');
+    volumeValue.textContent = level + '%';
+  }
+
+  function sendVolume(level) {
+    fetch('/volume/' + level)
+      .catch(() => setStatus(false, 'Failed to set volume'));
+  }
+
+  fetch('/volume')
+    .then(r => r.json())
+    .then(data => {
+      if (typeof data.volume === 'number') {
+        volumeSlider.value = data.volume;
+        updateVolumeFill(data.volume);
+      } else {
+        updateVolumeFill(volumeSlider.value);
+      }
+    })
+    .catch(() => updateVolumeFill(volumeSlider.value));
+
+  volumeSlider.addEventListener('input', () => {
+    updateVolumeFill(volumeSlider.value);
+    clearTimeout(volumeDebounceTimer);
+    volumeDebounceTimer = setTimeout(() => sendVolume(volumeSlider.value), 150);
+  });
+
+  volumeSlider.addEventListener('change', () => {
+    clearTimeout(volumeDebounceTimer);
+    sendVolume(volumeSlider.value);
+  });
 
   function fire(name) {
     fetch('/trigger/' + name)

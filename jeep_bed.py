@@ -73,6 +73,14 @@ SYSTEM CONTROLS:
     then (with a short delay after) turns off the smart plug powering
     it, avoiding the SD card corruption risk of a hard power cut.
 
+VOLUME CONTROL:
+    The web panel has a slider controlling system-wide output volume via
+    ALSA (amixer) -- affects all audio the Pi plays, not just this app.
+        GET http://<pi-ip>/volume          -> current level (0-100)
+        GET http://<pi-ip>/volume/<level>  -> sets level (0-100)
+    Uses the "PCM" ALSA control by default; if it has no effect, run
+    `amixer -c 0 scontrols` on the Pi and update ALSA_MIXER_CONTROL.
+
 APPLE HOMEKIT (HAP-python):
     This script also runs as its own HomeKit bridge -- no separate
     Homebridge process needed. On first run, HAP-python prints a pairing
@@ -110,6 +118,7 @@ import subprocess
 import time
 import threading
 import ctypes
+import re
 
 from gpiozero import Button, LED
 import pygame
@@ -534,6 +543,37 @@ def system_control(action):
 
     threading.Thread(target=_delayed_command, args=(SYSTEM_COMMANDS[action],), daemon=True).start()
     return jsonify(status="executing", action=action)
+
+
+# ---------------------------------------------------------------------------
+# VOLUME -- system-wide output level via ALSA (amixer), not per-sound-file.
+# ---------------------------------------------------------------------------
+# ALSA_MIXER_CONTROL is "PCM" for the Pi's standard onboard bcm2835 audio.
+# If setting volume has no effect, run `amixer -c 0 scontrols` on the Pi
+# to see this system's actual control names and update the constant below.
+
+ALSA_MIXER_CONTROL = "PCM"
+
+
+def get_current_volume():
+    result = subprocess.run(
+        ["amixer", "-c", "0", "sget", ALSA_MIXER_CONTROL],
+        capture_output=True, text=True, check=False,
+    )
+    match = re.search(r"\[(\d+)%\]", result.stdout)
+    return int(match.group(1)) if match else None
+
+
+@app.route("/volume", methods=["GET"])
+def api_get_volume():
+    return jsonify(volume=get_current_volume())
+
+
+@app.route("/volume/<int:level>", methods=["GET"])
+def api_set_volume(level):
+    level = max(0, min(100, level))
+    subprocess.run(["amixer", "-c", "0", "sset", ALSA_MIXER_CONTROL, f"{level}%"], check=False)
+    return jsonify(status="set", volume=level)
 
 
 # ---------------------------------------------------------------------------
