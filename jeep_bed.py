@@ -19,6 +19,15 @@ CLONE GIT REPO
 FORCE AUDIO OUT THE 3.5MM JACK:
     sudo raspi-config  ->  System Options -> Audio -> Headphones
 
+AUDIO BUFFER (ALSA underrun errors in logs):
+    pygame.mixer.pre_init() sets buffer=4096 to reduce ALSA "underrun
+    occurred" errors, which show up when the audio buffer runs dry
+    faster than the Pi can refill it -- common with lots of short sound
+    effects firing frequently. If underruns still appear, try doubling
+    to buffer=8192 (adds a bit more latency, ~90ms more at 44100Hz, but
+    more headroom against dropouts). If they're gone but sounds feel
+    delayed, try dropping to buffer=2048 instead.
+
 WIRING SUMMARY (paired for adjacent physical header pins, per case layout)
     - Engine:     button GPIO 22, LED GPIO 23 (green)
     - Horn:       button GPIO 17, LED GPIO 18 (red)
@@ -199,6 +208,7 @@ class SoundBank:
 # SETUP
 # ---------------------------------------------------------------------------
 
+pygame.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=4096)
 pygame.mixer.init()
 
 engine_sounds = SoundBank(ENGINE_SOUND_DIR)
