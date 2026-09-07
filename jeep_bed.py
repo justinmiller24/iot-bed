@@ -106,7 +106,11 @@ DYNAMIC SOUND LOADING:
     Each button cycles through its folder's files in alphabetical order,
     one per press (Siren cycles which sound loops each time it's turned
     on). Each folder needs at least one audio file or the script will
-    raise an error on startup.
+    raise an error on startup. Engine, Horn, and Noises share a single
+    "currently playing" slot -- pressing any of the three stops whatever
+    was playing (from among those three) before starting the new clip,
+    preventing overlapping garbled audio from rapid button-mashing.
+    Siren is unaffected by this (independent loop with its own on/off).
 
 Run manually to test:
     sudo python3 jeep_bed.py
@@ -251,6 +255,21 @@ siren_sounds = SoundBank(SIREN_SOUND_DIR)
 _current_siren_sound = None
 startup_sound = pygame.mixer.Sound(STARTUP_SOUND)
 
+# Engine, Horn, and Noises share one "currently playing" slot -- pressing
+# any of the three stops whatever's playing (from among those three)
+# before starting the new one, so rapid button-mashing doesn't overlap
+# multiple clips into a garbled mess. Siren has its own independent
+# tracker above since it's a persistent loop with real on/off state.
+_current_control_sound = None
+
+
+def _play_control_sound(sound_bank):
+    global _current_control_sound
+    if _current_control_sound is not None:
+        _current_control_sound.stop()
+    _current_control_sound = sound_bank.play_next()
+    return _current_control_sound
+
 engine_button = Button(ENGINE_BUTTON_PIN, bounce_time=0.05)
 horn_button = Button(HORN_BUTTON_PIN, bounce_time=0.05)
 music_button = Button(MUSIC_BUTTON_PIN, bounce_time=0.05)
@@ -284,7 +303,7 @@ headlight_accessory = None
 def on_engine_press():
     print("[engine] start")
     engine_led.on()
-    engine_sounds.play_next()
+    _play_control_sound(engine_sounds)
 
 
 def on_engine_release():
@@ -301,7 +320,7 @@ engine_button.when_released = on_engine_release
 def on_horn_press():
     print("[horn] pressed")
     horn_led.on()
-    horn_sounds.play_next()
+    _play_control_sound(horn_sounds)
     was_left_off = not headlight_left_led.is_lit
     was_right_off = not headlight_right_led.is_lit
     if was_left_off:
@@ -329,7 +348,7 @@ horn_button.when_released = on_horn_release
 def on_music_press():
     print("[music] playing next clip")
     music_led.on()
-    music_sounds.play_next()
+    _play_control_sound(music_sounds)
 
 def on_music_release():
     music_led.off()
